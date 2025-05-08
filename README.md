@@ -17,7 +17,7 @@
   <li>
     Add the Python extension to Burp Suite:
     <ol>
-      <li>Open the <strong>Installed</strong> tab under <strong>Extensions<strong> tab.</li>
+      <li>Open the <strong>Installed</strong> tab under <strong>Extensions</strong> tab.</li>
       <li>Select <strong>Add</strong>.</li>
       <li>Choose <strong>Python</strong> as Extension Type.</li>
       <li>Select the extension's Python file.</li>
