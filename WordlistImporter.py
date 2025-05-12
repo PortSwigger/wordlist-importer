@@ -11,6 +11,7 @@ from java.io import BufferedReader, InputStreamReader, File, FileOutputStream, O
 from java.util import ArrayList, HashSet
 from urlparse import urlparse
 import os
+import threading
 
 class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
     HIGHLIGHT_COLOR = Color(195, 225, 245)
@@ -26,6 +27,14 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
         self._entry_panels = []
         self._merged_wordlist = ArrayList()
         self._selected_url = None
+
+        # Initialize any background threads or resources that need cleanup
+        self._running = True  # Flag to control background threads if any
+        self._active_connections = []  # List to track any active network connections
+        self._active_readers = []  # List to track any open file readers
+        
+        # Register ourselves as an extension state listener for clean unloading
+        callbacks.registerExtensionStateListener(self)
         
         # Load previously saved URLs from extension and add them to the URL history set
         saved_urls = callbacks.loadExtensionSetting("url_history")
@@ -151,6 +160,45 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
         callbacks.registerIntruderPayloadGeneratorFactory(self)
         callbacks.addSuiteTab(self)
         callbacks.printOutput("URL Wordlist Importer loaded")
+
+    # Implementation of IExtensionStateListener.extensionUnloaded()
+    def extensionUnloaded(self):
+        """Clean up resources when extension is unloaded"""
+        self._callbacks.printOutput("WordlistImporter extension is being unloaded, releasing resources...")
+        
+        # Signal all background operations to stop
+        self._running = False
+        
+        # Clear any wordlists from memory
+        if self._merged_wordlist:
+            self._callbacks.printOutput("Clearing wordlist from memory...")
+            self._merged_wordlist.clear()
+        
+        # Close any open file readers
+        for reader in self._active_readers:
+            try:
+                self._callbacks.printOutput("Closing file reader...")
+                reader.close()
+            except Exception as e:
+                self._callbacks.printError("Error closing reader: " + str(e))
+        
+        # Close any active network connections
+        for conn in self._active_connections:
+            try:
+                self._callbacks.printOutput("Closing network connection...")
+                conn.disconnect()
+            except Exception as e:
+                self._callbacks.printError("Error closing connection: " + str(e))
+        
+        # Clear our lists of tracked resources
+        self._active_readers = []
+        self._active_connections = []
+        
+        # Ensure GC can reclaim any large wordlists
+        self._url_history = None
+        self._merged_wordlist = None
+        
+        self._callbacks.printOutput("WordlistImporter extension unloaded cleanly")
         
     # Action listener for Select All
     def select_all_checkboxes(self, event):
@@ -159,6 +207,10 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
 
     # Method for actions when Import button is clicked
     def test_url(self, event):
+        self._status_label.setText("Importing...")
+        threading.Thread(target=self._test_url_worker).start()
+
+    def _test_url_worker(self):
         url = self._url_field.getText().strip()
         try:
             if url == self._default_url:
@@ -216,6 +268,9 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
 
     # Method to check URL and display information on the UI
     def _import_from_url(self, url):
+         threading.Thread(target=self._import_from_url_worker, args=(url,)).start()
+
+    def _import_from_url_worker(self, url):
         try:
             conn = URL(url).openConnection()
             conn.setRequestMethod("GET")
@@ -265,6 +320,9 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
 
     # Method to read the wordlist from the selected file 
     def import_from_file_path(self, file_path):
+        threading.Thread(target=self._import_from_file_path_worker, args=(file_path,)).start()
+
+    def _import_from_file_path_worker(self, file_path):
         try:
             # It's a file path
             file_obj = File(file_path)
@@ -305,7 +363,7 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
    # Method to clear the history
     def clear_history(self, event):
         ch_result = JOptionPane.showConfirmDialog(
-            None,
+            self._panel,
             "Are you sure you want to clear the entire URL history?",
             "Confirm Clear History",
             JOptionPane.YES_NO_OPTION
@@ -408,7 +466,10 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
     def select_url(self, url):
         self._selected_url = url
         self._url_field.setText(url)
+        self._status_label.setText("Importing...")
+        threading.Thread(target=self._select_url_worker, args=(url,)).start()
 
+    def _select_url_worker(self, url):
         words = []
 
         # Checks if it's a local file path or URL
@@ -512,6 +573,10 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
 
     # Method to merge selected wordlists
     def merge_selected_wordlists(self, event):
+        self._status_label.setText("Merging...")
+        threading.Thread(target=self._merge_selected_wordlists_worker).start()
+
+    def _merge_selected_wordlists_worker(self):
         selected_sources = []
         for i in range(self._url_checkboxes.size()):
             if self._url_checkboxes.get(i).isSelected():
@@ -556,7 +621,7 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
     # Method used to clear a merged wordlist
     def clear_merged_wordlist(self, event):
        cw_result = JOptionPane.showConfirmDialog(
-            None,
+            self._panel,
             "Are you sure you want to clear the wordlist from the memory?",
             "Confirm Clear Wordlist",
             JOptionPane.YES_NO_OPTION
@@ -572,6 +637,10 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
 
     # Method to export a wordlist and save it locally
     def save_wordlist_to_file(self):
+        self._status_label.setText("Saving...")
+        threading.Thread(target=self._save_wordlist_to_file_worker).start()
+
+    def _save_wordlist_to_file_worker(self):
         try:
             file_chooser = JFileChooser()
             file_chooser.setDialogTitle("Select Save Location")
