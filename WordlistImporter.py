@@ -9,7 +9,6 @@ from java.awt.event import ActionListener, MouseAdapter
 from java.net import URL
 from java.io import BufferedReader, InputStreamReader, File, FileOutputStream, OutputStreamWriter, FileInputStream
 from java.util import ArrayList, HashSet
-from urlparse import urlparse
 import os
 import threading
 
@@ -202,8 +201,20 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExten
         
     # Action listener for Select All
     def select_all_checkboxes(self, event):
+        all_selected = True
         for checkbox in self._url_checkboxes:
-            checkbox.setSelected(True)
+            if not checkbox.isSelected():
+                all_selected = False
+                break
+
+        if all_selected:
+            for checkbox in self._url_checkboxes:
+                checkbox.setSelected(False)
+            event.getSource().setText("Select All")
+        else:
+            for checkbox in self._url_checkboxes:
+                checkbox.setSelected(True)
+            event.getSource().setText("Deselect All")
 
     # Method for actions when Import button is clicked
     def test_url(self, event):
