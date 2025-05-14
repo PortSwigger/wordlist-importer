@@ -1,7 +1,7 @@
 #   WordlistImporter
 #   Author: Juveria Banu
-#   Version: 1.0
-from burp import IBurpExtender, IIntruderPayloadGeneratorFactory, IIntruderPayloadGenerator, ITab
+#   Version: 1.1
+from burp import IBurpExtender, IIntruderPayloadGeneratorFactory, IIntruderPayloadGenerator, ITab, IExtensionStateListener
 from javax.swing import JPanel, JButton, JTextField, JLabel, BoxLayout, JOptionPane, JScrollPane, JTextArea, JCheckBox, JFileChooser, BorderFactory, Box
 from javax.swing.border import LineBorder
 from java.awt import BorderLayout, Dimension, FlowLayout, Cursor, Insets, Color
@@ -13,7 +13,7 @@ from urlparse import urlparse
 import os
 import threading
 
-class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab):
+class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExtensionStateListener):
     HIGHLIGHT_COLOR = Color(195, 225, 245)
 
     def registerExtenderCallbacks(self, callbacks):
@@ -745,7 +745,7 @@ class DeleteUrlActionListener(ActionListener):
         self.url = url
     def actionPerformed(self, event):
         result = JOptionPane.showConfirmDialog(
-            None,
+            self.extender._panel,
             "Are you sure you want to delete this entry from the History?",
             "Confirm Deletion",
             JOptionPane.YES_NO_OPTION
