@@ -5,9 +5,9 @@ from burp import IBurpExtender, IIntruderPayloadGeneratorFactory, IIntruderPaylo
 from javax.swing import JPanel, JButton, JTextField, JLabel, BoxLayout, JOptionPane, JScrollPane, JTextArea, JCheckBox, JFileChooser, BorderFactory, Box
 from java.awt import BorderLayout, Dimension, FlowLayout, Cursor, Insets, Color
 from java.awt.event import ActionListener, MouseAdapter
-from java.net import URL
 from java.io import BufferedReader, InputStreamReader, File, FileOutputStream, OutputStreamWriter, FileInputStream
 from java.util import ArrayList, HashSet
+import re
 import os
 import threading
 
@@ -27,9 +27,9 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExten
         self._selected_url = None
 
         # Initialize any background threads or resources that need cleanup
-        self._running = True  # Flag to control background threads if any
-        self._active_connections = []  # List to track any active network connections
-        self._active_readers = []  # List to track any open file readers
+        self._running = True 
+        self._active_connections = []
+        self._active_readers = []
         
         # Register ourselves as an extension state listener for clean unloading
         callbacks.registerExtensionStateListener(self)
@@ -229,13 +229,27 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExten
 
             if url.startswith("http"):
                 try:
-                    conn = URL(url).openConnection()
-                    conn.setConnectTimeout(5000)
-                    conn.setReadTimeout(5000)
-                    conn.setRequestMethod("GET")
-                    
-                    if conn.getResponseCode() != 200:
-                        self._status_label.setText("Error: URL returned status code " + str(conn.getResponseCode()))
+                    # Parse the URL manually
+                    m = re.match(r"(https?)://([^/:]+)(:\d+)?(/.*)?", url)
+                    if not m:
+                        self._status_label.setText("Malformed URL")
+                        return
+                    protocol, host, port_str, path = m.groups()
+                    port = int(port_str[1:]) if port_str else (443 if protocol == "https" else 80)
+                    use_https = (protocol == "https")
+
+                    # Build HTTP request manually
+                    path = path or "/"
+                    request_str = "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: Burp-Extension\r\nConnection: close\r\n\r\n".format(path, host)
+                    request_bytes = request_str.encode("utf-8")
+
+                    http_service = self._helpers.buildHttpService(host, port, use_https)
+                    response = self._callbacks.makeHttpRequest(http_service, request_bytes)
+                    response_info = self._helpers.analyzeResponse(response.getResponse())
+                    status_code = response_info.getStatusCode()
+
+                    if status_code != 200:
+                        self._status_label.setText("Error: URL returned status code " + str(status_code))
                         return
                 except Exception as e:
                     self._status_label.setText("Error connecting to URL: " + str(e))
@@ -251,23 +265,21 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExten
                 if not file_obj.canRead():
                     self._status_label.setText("Error: File is not readable")
                     return
-                    
-            if url and url not in self._url_history:
-                self._url_history.insert(0, url)
+
+            # Update URL history
+            if url:
+                if self._url_history.contains(url):
+                    self._url_history.remove(url)
+                self._url_history.add(0, url)
                 self.save_url_history()
 
-            elif url in self._url_history:
-                self._url_history.remove(url) 
-                self._url_history.insert(0, url)
-                self.save_url_history()
-
-            if url.startswith("http"): 
+            # Proceed with importing
+            if url.startswith("http"):
                 self._import_from_url(url)
             else:
                 self.import_from_file_path(url)
 
-            self.update_url_history_panel()  
-            
+            self.update_url_history_panel()
 
         except Exception as e:
             self._status_label.setText("Error: " + str(e))
@@ -282,34 +294,48 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExten
 
     def _import_from_url_worker(self, url):
         try:
-            conn = URL(url).openConnection()
-            conn.setRequestMethod("GET")
-            
-            if conn.getResponseCode() == 200:
-                file_size = conn.getContentLength()
-                def format_size(bytes):
-                    if bytes >= 1024 * 1024:
-                        return "%.2f MB" % (bytes / 1024.0 / 1024)
-                    elif bytes >= 1024:
-                        return "%.2f KB" % (bytes / 1024.0)
-                    else:
-                        return "%d bytes" % bytes
+            def format_size(num_bytes):
+                if num_bytes >= 1024 * 1024:
+                    return "%.2f MB" % (num_bytes / (1024.0 * 1024))
+                elif num_bytes >= 1024:
+                    return "%.2f KB" % (num_bytes / 1024.0)
+                else:
+                    return "%d bytes" % num_bytes
 
-                readable_size = format_size(file_size)
-                
-                reader = BufferedReader(InputStreamReader(conn.getInputStream()))
-                words = []
-                line = reader.readLine()
-                while line is not None:
-                    line = line.strip()
-                    if line:
-                        words.append(line)
-                    line = reader.readLine()
-                reader.close()
+            # Parse URL manually
+            m = re.match(r"(https?)://([^/:]+)(:\d+)?(/.*)?", url)
+            if not m:
+                self._status_label.setText("Malformed URL")
+                return
+            protocol, host, port_str, path = m.groups()
+            port = int(port_str[1:]) if port_str else (443 if protocol == "https" else 80)
+            use_https = (protocol == "https")
+            path = path or "/"
 
-                self._status_label.setText("Wordlist imported from the URL. Word count: " + str(len(words)) + ", File size: " + str(readable_size))
-                self._sample_area.setText("\n".join(words[:100]))
-                self._sample_area.setCaretPosition(0)
+            # Build raw HTTP request manually
+            request_str = "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: Burp-Extension\r\nConnection: close\r\n\r\n".format(path, host)
+            request_bytes = request_str.encode("utf-8")
+
+            http_service = self._helpers.buildHttpService(host, port, use_https)
+            response = self._callbacks.makeHttpRequest(http_service, request_bytes)
+            response_info = self._helpers.analyzeResponse(response.getResponse())
+
+            if response_info.getStatusCode() != 200:
+                self._status_label.setText("Failed to fetch: HTTP " + str(response_info.getStatusCode()))
+                return
+
+            body_offset = response_info.getBodyOffset()
+            response_bytes = response.getResponse()
+            body = response_bytes[body_offset:]
+            body_str = self._helpers.bytesToString(body)
+            lines = [line.strip() for line in body_str.splitlines() if line.strip()]
+
+            # Estimate file size
+            readable_size = format_size(len(body))
+
+            self._status_label.setText("Wordlist imported from the URL. Word count: " + str(len(lines)) + ", File size: " + readable_size)
+            self._sample_area.setText("\n".join(lines[:100]))
+            self._sample_area.setCaretPosition(0)
 
         except Exception as e:
             self._status_label.setText("Error: " + str(e))
@@ -482,41 +508,54 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExten
     def _select_url_worker(self, url):
         words = []
 
-        # Checks if it's a local file path or URL
+        def format_size(num_bytes):
+            if num_bytes >= 1024 * 1024:
+                return "%.2f MB" % (num_bytes / (1024.0 * 1024))
+            elif num_bytes >= 1024:
+                return "%.2f KB" % (num_bytes / 1024.0)
+            else:
+                return "%d bytes" % num_bytes
+
         if url.startswith("http"):
             try:
-                conn = URL(url).openConnection()
-                conn.setRequestMethod("GET")
-                if conn.getResponseCode() == 200:
-                    file_size = conn.getContentLength()
-                    def format_size(bytes):
-                        if bytes >= 1024 * 1024:
-                            return "%.2f MB" % (bytes / 1024.0 / 1024)
-                        elif bytes >= 1024:
-                            return "%.2f KB" % (bytes / 1024.0)
-                        else:
-                            return "%d bytes" % bytes
+                # Manually parse the URL
+                m = re.match(r"(https?)://([^/:]+)(:\d+)?(/.*)?", url)
+                if not m:
+                    self._status_label.setText("Malformed URL")
+                    return
+                protocol, host, port_str, path = m.groups()
+                port = int(port_str[1:]) if port_str else (443 if protocol == "https" else 80)
+                use_https = (protocol == "https")
+                path = path or "/"
 
-                    readable_size = format_size(file_size)
-                    
-                    
-                    reader = BufferedReader(InputStreamReader(conn.getInputStream()))
-                    line = reader.readLine()
-                    while line is not None:
-                        line = line.strip()
-                        if line:
-                            words.append(line)
-                        line = reader.readLine()
-                    reader.close()
+                request_str = "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: Burp-Extension\r\nConnection: close\r\n\r\n".format(path, host)
+                request_bytes = request_str.encode("utf-8")
 
-                    self._status_label.setText("Wordlist imported from the selected URL. Word count: " + str(len(words)) + ", File size: " + str(readable_size))
-                    self._sample_area.setText("\n".join(words[:100]))
-                    self._sample_area.setCaretPosition(0)
-                else:
-                    self._status_label.setText("Preview failed: HTTP " + str(conn.getResponseCode()))
+                http_service = self._helpers.buildHttpService(host, port, use_https)
+                response = self._callbacks.makeHttpRequest(http_service, request_bytes)
+                response_info = self._helpers.analyzeResponse(response.getResponse())
+
+                if response_info.getStatusCode() != 200:
+                    self._status_label.setText("Preview failed: HTTP " + str(response_info.getStatusCode()))
+                    return
+
+                body_offset = response_info.getBodyOffset()
+                response_bytes = response.getResponse()
+                body = response_bytes[body_offset:]
+                body_str = self._helpers.bytesToString(body)
+
+                lines = [line.strip() for line in body_str.splitlines() if line.strip()]
+                words.extend(lines)
+
+                readable_size = format_size(len(body))
+                self._status_label.setText("Wordlist imported from the selected URL. Word count: " + str(len(words)) + ", File size: " + readable_size)
+                self._sample_area.setText("\n".join(words[:100]))
+                self._sample_area.setCaretPosition(0)
+
             except Exception as e:
                 self._status_label.setText("Preview error: " + str(e)[:50])
                 self._callbacks.printError("URL preview error: " + str(e))
+
         else:
             try:
                 file_obj = File(url)
@@ -524,20 +563,12 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExten
                     self._status_label.setText("Error: File does not exist: " + url)
                     self._callbacks.printError("File does not exist: " + url)
                     return
-                    
-                file_size = file_obj.length()  # Get file size    
-                def format_size(bytes):
-                    if bytes >= 1024 * 1024:
-                        return "%.2f MB" % (bytes / 1024.0 / 1024)
-                    elif bytes >= 1024:
-                        return "%.2f KB" % (bytes / 1024.0)
-                    else:
-                        return "%d bytes" % bytes
 
+                file_size = file_obj.length()
                 readable_size = format_size(file_size)
+
                 file_input_stream = FileInputStream(file_obj)
                 reader = BufferedReader(InputStreamReader(file_input_stream, "UTF-8"))
-                
                 line = reader.readLine()
                 while line is not None:
                     line = line.strip()
@@ -546,21 +577,19 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExten
                     line = reader.readLine()
                 reader.close()
 
-                self._status_label.setText("Wordlist imported from the selected file path. Word count: " + str(len(words)) + ", File size: " + str(readable_size))
+                self._status_label.setText("Wordlist imported from the selected file path. Word count: " + str(len(words)) + ", File size: " + readable_size)
                 self._sample_area.setText("\n".join(words[:100]))
                 self._sample_area.setCaretPosition(0)
+
             except Exception as e:
                 self._status_label.setText("Error reading file: " + str(e)[:50])
                 self._callbacks.printError("File reading error: " + str(e))
-        
-        # Stores the loaded words in the merged wordlist for the intruder
+
+        # Store the loaded words in the merged wordlist
         self._merged_wordlist.clear()
         for word in words:
             self._merged_wordlist.add(word)
-        
-        self.update_url_history_panel()
-        self._callbacks.printOutput("Selected URL/file: " + url)
-
+            
     # Creates a new instance a wordlist generator based on the current configuration
     def createNewInstance(self, attack):
         if self._merged_wordlist and self._merged_wordlist.size() > 0:
@@ -682,25 +711,40 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExten
     # Method to fetch the wordlist from a URL
     def _fetch_wordlist_from_url(self, url):
         try:
-            conn = URL(url).openConnection()
-            conn.setRequestMethod("GET")
-            if conn.getResponseCode() != 200:
-                self._callbacks.printError("Failed to fetch wordlist: HTTP " + str(conn.getResponseCode()))
+            # Manually parse the URL
+            m = re.match(r"(https?)://([^/:]+)(:\d+)?(/.*)?", url)
+            if not m:
+                self._callbacks.printError("Malformed URL: " + url)
                 return []
-            reader = BufferedReader(InputStreamReader(conn.getInputStream()))
-            lines = []
-            line = reader.readLine()
-            while line is not None:
-                line = line.strip()
-                if line:
-                    lines.append(line)
-                line = reader.readLine()
-            reader.close()
+            protocol, host, port_str, path = m.groups()
+            port = int(port_str[1:]) if port_str else (443 if protocol == "https" else 80)
+            use_https = (protocol == "https")
+            path = path or "/"
+
+            # Manually build HTTP request
+            request_str = "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: Burp-Extension\r\nConnection: close\r\n\r\n".format(path, host)
+            request_bytes = request_str.encode("utf-8")
+
+            http_service = self._helpers.buildHttpService(host, port, use_https)
+            response = self._callbacks.makeHttpRequest(http_service, request_bytes)
+            response_info = self._helpers.analyzeResponse(response.getResponse())
+
+            if response_info.getStatusCode() != 200:
+                self._callbacks.printError("Failed to fetch wordlist: HTTP " + str(response_info.getStatusCode()))
+                return []
+
+            body_offset = response_info.getBodyOffset()
+            response_bytes = response.getResponse()
+            body = response_bytes[body_offset:]
+            body_str = self._helpers.bytesToString(body)
+
+            lines = [line.strip() for line in body_str.splitlines() if line.strip()]
             return lines
+
         except Exception as e:
             self._callbacks.printError("Error fetching wordlist from URL " + url + ": " + str(e))
             return []
-
+            
     # Method to fetch the wordlist from a file
     def _fetch_wordlist_from_file(self, file_path):
         try:
@@ -809,36 +853,56 @@ class URLWordlistGenerator(IIntruderPayloadGenerator):
         self.callbacks = callbacks
         self.index = 0
         self.words = self.fetch_words_from_url(url)
+
     def fetch_words_from_url(self, url):
         try:
             if not url.startswith("http://") and not url.startswith("https://"):
-                url = "http://" + url  # or raise an error, or ask the user
-            conn = URL(url).openConnection()
-            conn.setRequestMethod("GET")
-            if conn.getResponseCode() != 200:
-                self.callbacks.printError("HTTP error: " + str(conn.getResponseCode()))
+                url = "http://" + url  # fallback default
+
+            # Manually parse the URL
+            m = re.match(r"(https?)://([^/:]+)(:\d+)?(/.*)?", url)
+            if not m:
+                self.callbacks.printError("Malformed URL: " + url)
                 return []
-            reader = BufferedReader(InputStreamReader(conn.getInputStream()))
-            lines = []
-            line = reader.readLine()
-            while line is not None:
-                line = line.strip()
-                if line:
-                    lines.append(line)
-                line = reader.readLine()
-            reader.close()
+
+            protocol, host, port_str, path = m.groups()
+            port = int(port_str[1:]) if port_str else (443 if protocol == "https" else 80)
+            use_https = (protocol == "https")
+            path = path or "/"
+
+            request_str = "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: Burp-Extension\r\nConnection: close\r\n\r\n".format(path, host)
+            request_bytes = request_str.encode("utf-8")
+
+            helpers = self.callbacks.getHelpers()
+            http_service = helpers.buildHttpService(host, port, use_https)
+            response = self.callbacks.makeHttpRequest(http_service, request_bytes)
+            response_info = helpers.analyzeResponse(response.getResponse())
+
+            if response_info.getStatusCode() != 200:
+                self.callbacks.printError("HTTP error: " + str(response_info.getStatusCode()))
+                return []
+
+            body_offset = response_info.getBodyOffset()
+            response_bytes = response.getResponse()
+            body = response_bytes[body_offset:]
+            body_str = helpers.bytesToString(body)
+            lines = [line.strip() for line in body_str.splitlines() if line.strip()]
             return lines
+
         except Exception as e:
             self.callbacks.printError("Error fetching URL: " + str(e))
             return []
+
     def hasMorePayloads(self):
         return self.index < len(self.words)
+
     def getNextPayload(self, baseValue):
         if self.index < len(self.words):
             payload = self.words[self.index]
             self.index += 1
             return payload
         return None
+
 # Class to import wordlist to Intruder from a local file.       
 class FileWordlistGenerator(IIntruderPayloadGenerator):
     def __init__(self, file_path, callbacks):
