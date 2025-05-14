@@ -3,7 +3,6 @@
 #   Version: 1.1
 from burp import IBurpExtender, IIntruderPayloadGeneratorFactory, IIntruderPayloadGenerator, ITab, IExtensionStateListener
 from javax.swing import JPanel, JButton, JTextField, JLabel, BoxLayout, JOptionPane, JScrollPane, JTextArea, JCheckBox, JFileChooser, BorderFactory, Box
-from javax.swing.border import LineBorder
 from java.awt import BorderLayout, Dimension, FlowLayout, Cursor, Insets, Color
 from java.awt.event import ActionListener, MouseAdapter
 from java.net import URL
