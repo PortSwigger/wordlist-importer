@@ -395,6 +395,10 @@ class BurpExtender(IBurpExtender, IIntruderPayloadGeneratorFactory, ITab, IExten
             JOptionPane.showMessageDialog(self._panel,
                 "Error: " + str(e),
                 "Import from File", JOptionPane.ERROR_MESSAGE)
+            
+        self._merged_wordlist.clear()
+        for word in words:
+            self._merged_wordlist.add(word)
 
    # Method to clear the history
     def clear_history(self, event):
