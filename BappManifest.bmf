@@ -1,0 +1,13 @@
+Uuid: 9c14aed9f1054dc88e7530bdaa37b9f5
+ExtensionType: 2
+Name: Wordlist Importer
+RepoName: wprdlist-importer
+ScreenVersion: 1.0.0
+SerialVersion: 1
+MinPlatformVersion: 2
+ProOnly: False
+Author: ladysecspeare
+ShortDescription: This extension allows users to seamlessly import wordlists hosted on the internet or a local file directly into Burp Suite for enhanced network security testing.
+EntryPoint: WordlistImporter.py
+BuildCommand: 
+SupportedProducts: Pro, Community
