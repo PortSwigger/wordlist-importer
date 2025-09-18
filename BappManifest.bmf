@@ -7,7 +7,7 @@ SerialVersion: 1
 MinPlatformVersion: 2
 ProOnly: False
 Author: ladysecspeare
-ShortDescription: This extension allows users to seamlessly import wordlists hosted on the internet or a local file directly into Burp Suite for enhanced network security testing.
+ShortDescription: Seamlessly import wordlists hosted on the internet or a local file directly into Intruder.
 EntryPoint: WordlistImporter.py
 BuildCommand: 
 SupportedProducts: Pro, Community

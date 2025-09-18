@@ -1,51 +1,29 @@
-<p>Wordlist Importer is a Burp extension, written in Python, that enables a smooth import of wordlists hosted on the Internet right into Burp Suite.</p>
+<p>Wordlist Importer streamlines the process of importing wordlists into Intruder attacks by allowing direct access to
+  both remote URLs and local files from a dedicated extension tab. The extension provides comprehensive wordlist
+  management capabilities including merging, deduplication, and history tracking for efficient payload generation
+  workflows.</p>
 
 <h2>Features</h2>
 <ul>
-  <li>Import a wordlist from a URL or a local file.</li>
-  <li>Display a sample of 100 words after importing the wordlist.</li>
-  <li>Add the URLs and file paths to the Wordlist History.</li>
-  <li>Use the imported wordlist in Intruder by selecting the Payload type as <code class=\InlineCode\>Extension-generated</code>.</li>
-  <li>Merge wordlists from multiple URLs or file paths, with automatic deduplication.</li>
-  <li>Export the merged wordlists onto a local storage.</li>
-  <li>Clear the loaded wordlist in memory using the <code class=\InlineCode\>Clear Wordlist</code> option.</li>
-  <li>Clear the Wordlist History using the <code class=\InlineCode\>Clear History</code> option.</li>
-  <li>Delete a specific wordlist from the history using the <code class=\InlineCode\>Delete</code> option.</li>
+  <li>Direct import of wordlists from remote URLs or local file paths</li>
+  <li>Live preview of imported wordlists with sample display of first 100 entries</li>
+  <li>Seamless integration with Intruder as an extension-generated payload source</li>
+  <li>Advanced wordlist merging with automatic deduplication across multiple sources</li>
+  <li>Persistent wordlist history with checkbox selection for batch operations</li>
+  <li>Export functionality for saving merged wordlists to local storage</li>
+  <li>Memory management with clear wordlist and history cleanup options</li>
+  <li>File browser integration for convenient local wordlist selection</li>
 </ul>
 
 <h2>Usage</h2>
-
-<h3>Importing a Wordlist from a URL</h3>
 <ol>
-  <li>Enter the URL of a raw text file containing the wordlist.</li>
-  <li>Click on <code class=\InlineCode\>Import</code>. The wordlist gets loaded, and a preview of 100 words is displayed.</li>
-  <li>The URL is then added to the Wordlist History.</li>
+  <li>Navigate to the Wordlist Importer tab</li>
+  <li>Enter a URL pointing to a raw wordlist or use <code class="InlineCode">Choose File</code> to select a local file
+  </li>
+  <li>Click <code class="InlineCode">Import</code> to load the wordlist and display a 100-word preview</li>
+  <li>In Intruder, set payload type to <code class="InlineCode">Extension-generated</code> and select <code
+      class="InlineCode">Wordlist Importer</code> as the generator</li>
+  <li>For multiple wordlists, check desired entries in the history and use <code
+      class="InlineCode">Merge Wordlists</code> to combine with deduplication</li>
+  <li>Export merged wordlists using the export function to save locally for future use</li>
 </ol>
-
-<h3>Importing a Wordlist from a Local File</h3>
-<ol>
-  <li>Enter the path of a local file, or hit the <code class=\InlineCode\>Choose File</code> option to browse and select one.</li>
-  <li>Click on <code class=\InlineCode\>Import</code>. The wordlist gets loaded, and a preview of 100 words is displayed.</li>
-  <li>The file path is then added to the Wordlist History.</li>
-</ol>
-
-<h3>Using the Imported Wordlist in Intruder</h3>
-<ol>
-  <li>Select the Payload type as <code class=\InlineCode\>Extension-generated</code> in the Intruder tool.</li>
-  <li>Use the <code class=\InlineCode\>Select generator</code> option to select the <code class=\InlineCode\>Wordlist Importer</code> extension.</li>
-  <li>Hit the <code class=\InlineCode\>Start Attack</code> option to use the wordlist imported from the extension.</li>
-</ol>
-
-<h3>Merging Wordlists</h3>
-<ol>
-  <li>Select two or more URLs and/or file paths by checking their respective checkboxes.</li>
-  <li>Hit the <code class=\InlineCode\>Merge Wordlists</code> option to integrate the wordlists and remove duplicate entries.</li>
-  <li>Export the merged wordlists if you want to save a local copy.</li>
-</ol>
-
-<h3>Additional Operational Details</h3>
-<ul>
-  <li>Clear the wordlist stored in memory using the <code class=\InlineCode\>Clear Wordlist</code> option.</li>
-  <li>Clear the Wordlist History using the <code class=\InlineCode\>Clear History</code> option.</li>
-  <li>Delete a particular wordlist from the history using the <code class=\InlineCode\>Delete</code> option.</li>
-</ul>
